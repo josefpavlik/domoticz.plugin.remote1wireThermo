@@ -103,9 +103,16 @@ class BasePlugin:
             self.devUuids[uuid]=unit
         else:
             unit=self.devUuids[uuid]
-        temp=value[:2]+"."+value[2:]
+        Domoticz.Debug("going to update "+str(unit)+" -> "+str(uuid)+" to "+value)
+#        temp=value[:2]+"."+value[2:] # raw - three decimal. I want only 1 decimal
+#        temp=print("%.2f" % (float(value)/1000.0)) # this does not work!!!!
+#        temp=print("{:.2f}".format(float(value)/1000.0)) # this does not work!!!!
+#        temp=print( "{:.{}f}".format(float("123456")/1000.0, 2 ) ) # this does not work!!!!
+        x=str((int(value)+50)//100)
+        temp=x[:2]+"."+x[2:]
         Domoticz.Debug("updating "+str(uuid)+" to "+temp)
-        Devices[unit].Update(0,temp+";0;0")
+#        Devices[unit].Update(0,temp+";0;0")
+        Devices[unit].Update(0,temp)
     
     def onStart(self):
         if Parameters["Mode6"] != "0":
