@@ -9,7 +9,7 @@
     <description>
         <h2>Remote 1 wire thermometers on Raspberry</h2><br/>
         Read remote 1 wire thermometers<br/>
-        You can access the remote host with password or identity file. If you want to use the password, please install &nbsp; <b>sshpass</b>.
+        You can access the remote host with password or identity file. If you want to use the password, please install  <b> sshpass</b>.
     </description>
     <params>
         <param field="Mode1" label="user@host" width="200px" default=""/>
@@ -72,7 +72,7 @@ class BasePlugin:
                 if Parameters["Mode2"] != "":
                   cmd=["sshpass", "-p", Parameters["Mode2"], "ssh", Parameters["Mode1"], script ]
                 else:
-                  cmd=["ssh", Parameters["Mode1"], "-i", Parameters["Mode3"], script ]
+                  cmd=["ssh", "-o", "StrictHostKeyChecking=no", Parameters["Mode1"], "-i", Parameters["Mode3"], script ]
                 ssh = subprocess.Popen( cmd,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE,
