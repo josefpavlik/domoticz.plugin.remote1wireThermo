@@ -91,6 +91,7 @@ class BasePlugin:
                 self.messageQueue.task_done()
         except Exception as err:
             Domoticz.Error("handleMessage: "+str(err))
+            self.messageQueue.task_done()
     
     def update_device(self, uuid, value):
         if uuid not in self.devUuids: 
