@@ -58,21 +58,20 @@ class BasePlugin:
         self.startSsh()
 
     def onHeartbeat(self):
-        if self.ssh==None:
-          if time.time()>=self.nextbeat:
-            self.startSsh()  
-          return
-        if self.ssh.poll()==None:
-          Domoticz.Debug("ssh no result")
-          return
-        if self.ssh.poll()!=0:
-          Domoticz.Debug("ssh error %d" % self.ssh.poll())
-          for line in self.ssh.stderr:
-            Domoticz.Error(line.strip())
-        else:
-          Domoticz.Debug("ssh has result")
-          self.gotResult()
+        if self.ssh!=None:
+          if self.ssh.poll()==None:
+            Domoticz.Debug("ssh no result")
+            return
+          if self.ssh.poll()!=0:
+            Domoticz.Debug("ssh error %d" % self.ssh.poll())
+            for line in self.ssh.stderr:
+              Domoticz.Error(line.strip())
+          else:
+            Domoticz.Debug("ssh has result")
+            self.gotResult()
         self.ssh=None
+        if time.time()>=self.nextbeat:
+          self.startSsh()  
 
     def startSsh(self):
         self.nextbeat+=int(Parameters["Mode5"])
