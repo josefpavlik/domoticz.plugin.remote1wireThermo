@@ -1,11 +1,12 @@
 #
 # Read remote 1 wire thermometers
 #
-# Author: Josef Pavlik, 2021, based on Multi-threaded example of Dnpwwo
+# Author: Josef Pavlik, 2021-2022, based on Multi-threaded example of Dnpwwo
 #
+# https://github.com/josefpavlik/domoticz.plugin.remote1wireThermo
 # requires sshpass (sudo apt install sshpass
 """
-<plugin key="Remote1wire" name="Remote 1 wire thermometers on Raspberry" author="Josef Pavlik" version="1.0.0" >
+<plugin key="Remote1wire" name="Remote 1 wire thermometers on Raspberry" author="Josef Pavlik" version="1.1.0" >
     <description>
         <h2>Remote 1 wire thermometers on Raspberry</h2><br/>
         Read remote 1 wire thermometers<br/>
@@ -44,54 +45,65 @@ import subprocess
 class BasePlugin:
     
     def __init__(self):
-        self.messageQueue = queue.Queue()
-        self.messageThread = threading.Thread(name="QueueThread", target=BasePlugin.handleMessage, args=(self,))
         self.devUuids={}
+        self.ssh=None
+        self.nextbeat=time.time()
 
-    def handleMessage(self):
-        try:
-            Domoticz.Debug("Entering message handler")
-            while True:
-                Message = self.messageQueue.get(block=True)
-                Domoticz.Debug("got message")
-                if Message is None:
-                    Domoticz.Debug("Exiting message handler")
-                    self.messageQueue.task_done()
-                    break
+    def onStart(self):
+        if Parameters["Mode6"] != "0":
+            Domoticz.Debugging(int(Parameters["Mode6"]))
+            DumpConfigToLog()
+        Domoticz.Heartbeat(15)
+        self.nextbeat=time.time()
+        self.startSsh()
 
+    def onHeartbeat(self):
+        if self.ssh==None:
+          if time.time()>=self.nextbeat:
+            self.startSsh()  
+          return
+        if self.ssh.poll()==None:
+          Domoticz.Debug("ssh no result")
+          return
+        if self.ssh.poll()!=0:
+          Domoticz.Debug("ssh error %d" % self.ssh.poll())
+          for line in self.ssh.stderr:
+            Domoticz.Error(line.strip())
+        else:
+          Domoticz.Debug("ssh has result")
+          self.gotResult()
+        self.ssh=None
+
+    def startSsh(self):
+        self.nextbeat+=int(Parameters["Mode5"])
+        self.devUuids={}
 # rescan the devices
-                self.devUuids={}
-                for i in Devices:
-                  d=Devices[i]
-                  self.devUuids[d.DeviceID]=d.Unit
+        for i in Devices:
+          d=Devices[i]
+          self.devUuids[d.DeviceID]=d.Unit
 #                  Domoticz.Debug("FIND device "+d.DeviceID)
 
-                # ssh pi@10.0.0.51 'for i in /sys/bus/w1/devices/*-* ; do echo -ne $(basename $i | sed s/.*-//)\\t; cat $i/temperature; done '
+        # ssh pi@10.0.0.51 'for i in /sys/bus/w1/devices/*-* ; do echo -ne $(basename $i | sed s/.*-//)\\t; cat $i/temperature; done '
 
-                script="for i in /sys/bus/w1/devices/*-* ; do echo -ne $(basename $i | sed s/.*-//)\\\\t; cat $i/temperature; done"
-                if Parameters["Mode2"] != "":
-                  cmd=["sshpass", "-p", Parameters["Mode2"], "ssh", Parameters["Mode1"], script ]
-                else:
-                  cmd=["ssh", "-o", "StrictHostKeyChecking=no", Parameters["Mode1"], "-i", Parameters["Mode3"], script ]
-                ssh = subprocess.Popen( cmd,
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE,
-                                        universal_newlines=True,
-                                        bufsize=0)
-                
+        script="for i in /sys/bus/w1/devices/*-* ; do sleep 0.5; echo -ne $(basename $i | sed s/.*-//)\\\\t; cat $i/temperature; done"
+        if Parameters["Mode2"] != "":
+          cmd=["timeout", "60", "sshpass", "-p", Parameters["Mode2"], "ssh", Parameters["Mode1"], script ]
+        else:
+          cmd=["timeout", "60", "ssh", "-o", "StrictHostKeyChecking=no", Parameters["Mode1"], "-i", Parameters["Mode3"], script ]
+        self.ssh = subprocess.Popen( cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                universal_newlines=True,
+                                bufsize=0)
+        Domoticz.Debug("ssh started")
 
-                # Fetch output
-                for line in ssh.stderr:
-                    Domoticz.Error(line.strip())
-                for line in ssh.stdout:
-                    #Domoticz.Debug(line.strip())
-                    p=line.replace("\n","").split("\t")
-                    if len(p)==2: self.update_device(p[0], p[1])
+        
+    def gotResult(self):
+        for line in self.ssh.stdout:
+          Domoticz.Debug(line.strip())
+          p=line.replace("\n","").split("\t")
+          if len(p)==2: self.update_device(p[0], p[1])
   
-                self.messageQueue.task_done()
-        except Exception as err:
-            Domoticz.Error("handleMessage: "+str(err))
-            self.messageQueue.task_done()
     
     def update_device(self, uuid, value):
         if uuid not in self.devUuids: 
@@ -115,34 +127,9 @@ class BasePlugin:
 #        Devices[unit].Update(0,temp+";0;0")
         Devices[unit].Update(0,temp)
     
-    def onStart(self):
-        if Parameters["Mode6"] != "0":
-            Domoticz.Debugging(int(Parameters["Mode6"]))
-            DumpConfigToLog()
-        self.messageThread.start()
-        Domoticz.Heartbeat(int(Parameters["Mode5"]))
-
-    def onHeartbeat(self):
-        self.messageQueue.put({"Type":"Log", "Text":"Heartbeat test message"})
-
     def onStop(self):
-        # Not needed in an actual plugin
-        for thread in threading.enumerate():
-            if (thread.name != threading.current_thread().name):
-                Domoticz.Log("'"+thread.name+"' is running, it must be shutdown otherwise Domoticz will abort on plugin exit.")
-
-        # signal queue thread to exit
-        self.messageQueue.put(None)
-        Domoticz.Log("Clearing message queue...")
-        self.messageQueue.join()
-
-        # Wait until queue thread has exited
-        Domoticz.Log("Threads still active: "+str(threading.active_count())+", should be 1.")
-        while (threading.active_count() > 1):
-            for thread in threading.enumerate():
-                if (thread.name != threading.current_thread().name):
-                    Domoticz.Log("'"+thread.name+"' is still running, waiting otherwise Domoticz will abort on plugin exit.")
-            time.sleep(1.0)
+        if self.ssh!=None and self.ssh.poll()!=None:
+          self.ssh.terminate()
 
 global _plugin
 _plugin = BasePlugin()
